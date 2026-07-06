@@ -473,7 +473,10 @@ views.today = async () => {
   // slaap-teaser
   const slp = await DB.getMeta("lastSleep");
   const sleepSec = slp ? `<div class="sec"><div class="sec-h"><h2>Slaap</h2><a href="#sleep">Toon meer</a></div>${sleepCard(slp, sleepScore(slp))}</div>` : "";
-  const connBtn = !S.device ? `<div class="sec"><button class="btn block" data-action="connect">Verbind met horloge</button></div>` : (!S.connected ? `<div class="sec"><button class="btn block" data-action="connect">Opnieuw verbinden</button></div>` : `<div class="sec"><button class="btn ghost block" data-action="sync">Synchroniseer nu</button></div>`);
+  const tip = `<div class="tipbox"><b>Lukt verbinden niet?</b> Ga naar <b>iPhone → Instellingen → Bluetooth</b>, tik op de ⓘ naast <b>H59_5A06</b> en kies <b>"Vergeet dit apparaat"</b>. Dan is het horloge vrij voor deze app. Zet daarna het scherm van je horloge aan en tik hier op Verbind.</div>`;
+  const connBtn = !S.device
+    ? `<div class="sec"><button class="btn block" data-action="connect">Verbind met horloge</button>${tip}</div>`
+    : (!S.connected ? `<div class="sec"><button class="btn block" data-action="connect">Opnieuw verbinden</button>${tip}</div>` : `<div class="sec"><button class="btn ghost block" data-action="sync">Synchroniseer nu</button></div>`);
   if (!stepsToday && !calToday && !slp && !fresh) return connBtn + hero + `<div class="empty">Verbind je horloge om je gegevens te zien.</div>` + DISCL;
   return connBtn + hero + rings + vit + sleepSec + DISCL;
 };

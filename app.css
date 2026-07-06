@@ -473,6 +473,9 @@ tr:first-child td, tr:first-child th { border-top: 0; }
 .connmsg.wait { background: color-mix(in srgb, var(--tint) 12%, transparent); color: var(--tint); }
 .connmsg.err { background: color-mix(in srgb, var(--bad) 14%, transparent); color: var(--bad); }
 
+.tipbox { margin-top: 12px; padding: 13px 15px; border-radius: 14px; background: var(--glass-2); border: 1px solid var(--glass-brd); font-size: 12.5px; color: var(--ink2); line-height: 1.55; }
+.tipbox b { color: var(--ink); }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .chart path.line, .hc-spark .sline { stroke-dasharray: none; stroke-dashoffset: 0; }
