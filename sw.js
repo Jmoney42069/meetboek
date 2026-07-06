@@ -1,5 +1,5 @@
 /* Offline-cache voor Meetboek Mobiel: cache-first op de app-schil. */
-const CACHE = "meetboek-mobiel-v3";
+const CACHE = "meetboek-mobiel-v4";
 const ASSETS = ["index.html", "./", "mobile.js", "app.css", "icon.svg", "manifest-mobile.webmanifest"];
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));

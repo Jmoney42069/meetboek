@@ -468,6 +468,11 @@ tr:first-child td, tr:first-child th { border-top: 0; }
 .lock .key:active { transform: scale(.93); background: var(--glass-strong); }
 .lock .key.fn { font-size: 14px; font-weight: 600; color: var(--muted); background: transparent; border-color: transparent; }
 
+/* ---------- Verbindings-statusregel (mobiele app) ---------- */
+.connmsg { margin: 8px 4px 0; padding: 12px 14px; border-radius: 14px; font-size: 13px; font-weight: 600; line-height: 1.5; }
+.connmsg.wait { background: color-mix(in srgb, var(--tint) 12%, transparent); color: var(--tint); }
+.connmsg.err { background: color-mix(in srgb, var(--bad) 14%, transparent); color: var(--bad); }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .chart path.line, .hc-spark .sline { stroke-dasharray: none; stroke-dashoffset: 0; }

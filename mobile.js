@@ -203,26 +203,56 @@ async function collect(op, frame, { quiet = 700, maxMs = 8000 } = {}) {
   } finally { S.collectors = S.collectors.filter((x) => x !== c); }
 }
 
-async function connectWatch() {
+function connBanner(msg, kind) {
+  // Zichtbare verbindings-statusregel (zodat je precies ziet wat er gebeurt).
+  let el = $("#connmsg");
+  if (!el) { el = document.createElement("div"); el.id = "connmsg"; $("#view").prepend(el); }
+  el.className = "connmsg " + (kind || "");
+  el.textContent = msg;
+}
+async function connectWatch(all) {
   clearTimeout(S.reconnectTimer);
   if (!navigator.bluetooth) { showNoBluetooth(); return; }
   try {
-    const dev = await navigator.bluetooth.requestDevice({
-      filters: [{ namePrefix: "H59" }, { services: [ADV_SERVICE] }],
-      optionalServices: [UART_SERVICE, "device_information"] });
+    connBanner("Kies je horloge in de lijst…", "wait");
+    const opts = all
+      ? { acceptAllDevices: true, optionalServices: [UART_SERVICE, "device_information"] }
+      : { filters: [{ namePrefix: "H59" }, { services: [ADV_SERVICE] }],
+          optionalServices: [UART_SERVICE, "device_information"] };
+    const dev = await navigator.bluetooth.requestDevice(opts);
     S.device = dev;
     dev.addEventListener("gattserverdisconnected", onDisconnected);
     localStorage.setItem("watchName", dev.name || "horloge");
-    await DB.setMeta("watchName", dev.name || "horloge");
     await gattConnect();
-  } catch { setChip(); }
+  } catch (e) {
+    setChip();
+    if (e && (e.name === "NotFoundError" || e.name === "AbortError")) {
+      // Niets/geen apparaat gekozen. Bied de 'alle apparaten'-optie aan.
+      connBanner("Geen horloge gekozen. Zie je 'H59' niet in de lijst? Zorg dat het scherm van je horloge aan staat en dat het niet met je telefoon-Bluetooth gekoppeld is (Instellingen → Bluetooth → ontkoppelen). Of tik hieronder op 'Alle apparaten tonen'.", "err");
+      showAllDevicesButton();
+    } else {
+      connBanner("Bluetooth-fout: " + (e && e.message ? e.message : e), "err");
+    }
+  }
+}
+function showAllDevicesButton() {
+  const host = $("#view .screen") || $("#view");
+  if ($("#allbtn")) return;
+  const b = document.createElement("button");
+  b.id = "allbtn"; b.className = "btn ghost block"; b.style.marginTop = "10px";
+  b.textContent = "Alle Bluetooth-apparaten tonen";
+  b.onclick = () => connectWatch(true);
+  const first = $("#connmsg"); if (first && first.parentNode) first.parentNode.insertBefore(b, first.nextSibling);
+  else host.prepend(b);
 }
 async function gattConnect() {
   const dev = S.device; if (!dev || S.connecting) return;
   S.connecting = true;
   try {
+    connBanner("Verbinden met " + (dev.name || "horloge") + "…", "wait");
     setChip("verbinden…");
     S.server = await dev.gatt.connect();
+    connBanner("Services zoeken…", "wait");
     const svc = await S.server.getPrimaryService(UART_SERVICE);
     const nt = await svc.getCharacteristic(UART_NOTIFY);
     S.wr = await svc.getCharacteristic(UART_WRITE);
@@ -230,12 +260,14 @@ async function gattConnect() {
     nt.addEventListener("characteristicvaluechanged", (e) => onFrame(e.target.value));
     for (const f of [setTimeFrame(), buildFrame(OP.FUNC_SUPPORT), buildFrame(OP.BATTERY), buildFrame(OP.PHONE_OS, [2])]) { await write(f); await new Promise((r) => setTimeout(r, 250)); }
     S.connected = true; S.backoff = 3000; setChip();
+    const cm = $("#connmsg"); if (cm) cm.remove(); const ab = $("#allbtn"); if (ab) ab.remove();
     toast(`Verbonden met ${dev.name || "horloge"}`);
     startLiveHr();
     render();
     sync();  // meteen alles ophalen
   } catch (e) {
     S.connected = false; S.wr = null; setChip();
+    connBanner("Verbinden mislukt: " + (e && e.message ? e.message : e) + " — ik probeer het automatisch opnieuw.", "err");
     clearTimeout(S.reconnectTimer); S.backoff = Math.min(S.backoff * 1.6, 30000);
     S.reconnectTimer = setTimeout(() => { if (S.device && !S.connected) gattConnect(); }, S.backoff);
   } finally { S.connecting = false; }
