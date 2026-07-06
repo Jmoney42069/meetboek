@@ -139,15 +139,15 @@ const DB = {
   async history(metric, sinceTs = 0) {
     const d = await this.open();
     return new Promise((res, rej) => {
-      const idx = d.transaction("m").objectStore("m").index("metric_ts");
-      const out = []; idx.openCursor(IDBKeyRange.bound([metric, sinceTs], [metric, Infinity])).onsuccess = (e) => {
-        const c = e.target.result; if (c) { out.push(c.value); c.continue(); } else res(out); };
-      d.onerror = () => rej(d.error);
+      const tx = d.transaction("m"); const out = [];
+      const rq2 = tx.objectStore("m").index("metric_ts").openCursor(IDBKeyRange.bound([metric, sinceTs], [metric, Infinity]));
+      rq2.onsuccess = (e) => { const c = e.target.result; if (c) { out.push(c.value); c.continue(); } else res(out); };
+      rq2.onerror = () => rej(rq2.error);
     });
   },
   async latest(metric) { const h = await this.history(metric); return h.length ? h[h.length - 1] : null; },
   async getMeta(k) { const d = await this.open(); return new Promise((res) => { const r = d.transaction("meta").objectStore("meta").get(k); r.onsuccess = () => res(r.result); r.onerror = () => res(null); }); },
-  async setMeta(k, v) { const d = await this.open(); return new Promise((res) => { const tx = d.transaction("meta", "readwrite"); tx.objectStore("meta").put(v, k); tx.oncomplete = res; }); },
+  async setMeta(k, v) { const d = await this.open(); return new Promise((res, rej) => { const tx = d.transaction("meta", "readwrite"); tx.objectStore("meta").put(v, k); tx.oncomplete = res; tx.onerror = () => rej(tx.error); }); },
   // dagelijkse historie-dedup: alleen opslaan als er die dag nog geen sample staat
   async hasOnDay(metric, ts) {
     const dayStart = Math.floor(ts / 86400) * 86400;
@@ -174,7 +174,7 @@ const S = { device: null, server: null, wr: null, connected: false, connecting: 
   reconnectTimer: null, backoff: 3000, battery: null, syncing: false };
 
 function onFrame(dv) {
-  const d = new Uint8Array(dv.buffer);
+  const d = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
   if (d.length !== 16 || !checksumOk(d)) return;
   const op = d[0] & 0x7f;
   if (op === OP.REALTIME_HR) { const bpm = d[1]; if (bpm > 0) { S.lastBpm = bpm; S.lastBpmTs = Date.now(); onLiveHr(bpm); } else S.lastHr0Ts = Date.now(); }
@@ -227,9 +227,11 @@ async function connectWatch(filtered) {
     connBanner("Kies je horloge in de lijst (H59_…)…", "wait");
     // Standaard ALLE apparaten tonen: op iOS/Bluefy verschijnt de H59 dan
     // gegarandeerd in de kieslijst (gefilterd op naam/service faalt soms stil).
+    // Alleen UART_SERVICE in optionalServices: de named alias "device_information"
+    // laat requestDevice op iOS/Bluefy soms stil falen (en we gebruiken 'm niet).
     const opts = filtered
-      ? { filters: [{ namePrefix: "H59" }, { services: [ADV_SERVICE] }], optionalServices: [UART_SERVICE, "device_information"] }
-      : { acceptAllDevices: true, optionalServices: [UART_SERVICE, "device_information"] };
+      ? { filters: [{ namePrefix: "H59" }, { services: [ADV_SERVICE] }], optionalServices: [UART_SERVICE] }
+      : { acceptAllDevices: true, optionalServices: [UART_SERVICE] };
     const dev = await navigator.bluetooth.requestDevice(opts);
     S.device = dev;
     dev.addEventListener("gattserverdisconnected", onDisconnected);
@@ -556,8 +558,18 @@ function showNoBluetooth() {
    telefoon in handen krijgt de app opent. Client-side (persoonlijk toestel);
    de echte bescherming is je telefoon-vergrendeling zelf. */
 async function sha(text) {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("meetboek:" + text));
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const s = "meetboek:" + text;
+  // Feature-detect: crypto.subtle bestaat alleen in een secure context (https).
+  // Ontbreekt het, dan een simpele fallback-hash — dit is een persoonlijk slot,
+  // geen bankbeveiliging, en het mag de app NOOIT laten vastlopen.
+  try {
+    if (self.crypto && self.crypto.subtle) {
+      const buf = await self.crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+      return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    }
+  } catch {}
+  let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+  return "fb" + h.toString(16);
 }
 function lockScreen({ setup }) {
   return new Promise((resolve) => {
@@ -572,15 +584,17 @@ function lockScreen({ setup }) {
         <div class="pad">${["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "del"].map((k) => k === "" ? "<span></span>" : `<button class="key ${k === "del" ? "fn" : ""}" data-k="${k}">${k === "del" ? "wis" : k}</button>`).join("")}</div></div>`;
     }
     async function done() {
-      if (setup) {
-        if (!first) { first = pin; pin = ""; paint(); return; }
-        if (first !== pin) { first = null; pin = ""; paint("Pincodes verschillen — opnieuw", true); return; }
-        localStorage.setItem("mbLock", await sha(pin));
-      } else {
-        if (await sha(pin) !== localStorage.getItem("mbLock")) { pin = ""; paint("Onjuiste pincode", true); if (navigator.vibrate) navigator.vibrate(80); return; }
-      }
+      try {
+        if (setup) {
+          if (!first) { first = pin; pin = ""; paint(); return; }
+          if (first !== pin) { first = null; pin = ""; paint("Pincodes verschillen — opnieuw", true); return; }
+          localStorage.setItem("mbLock", await sha(pin));
+        } else {
+          if (await sha(pin) !== localStorage.getItem("mbLock")) { pin = ""; paint("Onjuiste pincode", true); if (navigator.vibrate) navigator.vibrate(80); return; }
+        }
+      } catch (_e) { /* nooit blijven hangen: laat de app door */ }
       $("#top").style.visibility = ""; $(".dock-wrap").style.visibility = "";
-      host.onclick = null; resolve();
+      host.onclick = null; document.onkeydown = null; resolve();
     }
     host.onclick = (e) => {
       const b = e.target.closest("[data-k]"); if (!b) return;
@@ -612,7 +626,12 @@ document.addEventListener("click", (e) => {
   if (a === "vibrate") return vibrate();
   if (a === "measure") return doMeasure(el.dataset.kind, el);
 });
-window.addEventListener("hashchange", render);
 try { $("#hdate").textContent = new Date().toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" }); } catch {}
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
-(async () => { await gate(); document.onkeydown = null; setChip(); render(); tryAutoReconnect(); setInterval(() => { if (tab() === "today") render(); }, 30000); })();
+try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {}
+(async () => {
+  await gate(); document.onkeydown = null;
+  window.addEventListener("hashchange", render);
+  setChip(); render(); tryAutoReconnect();
+  setInterval(() => { if (tab() === "today") render(); }, 30000);
+})();
