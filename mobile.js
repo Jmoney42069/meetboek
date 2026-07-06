@@ -182,7 +182,17 @@ function onFrame(dv) {
   S.collectors.forEach((c) => { if (c.op === op) { c.frames.push(d); c.last = Date.now(); } });
   if (S.hrvGrab && op === OP.START_MEASURE) S.hrvGrab(d);
 }
-async function write(frame) { if (!S.wr) throw new Error("Niet verbonden"); await S.wr.writeValue(frame); }
+async function write(frame) {
+  if (!S.wr) throw new Error("Niet verbonden");
+  // Robuust schrijven: sommige stacks (o.a. iOS/Bluefy) ondersteunen alleen
+  // één schrijfmethode. Kies op basis van de characteristic-eigenschappen.
+  const w = S.wr, p = w.properties || {};
+  if (p.writeWithoutResponse && w.writeValueWithoutResponse) return w.writeValueWithoutResponse(frame);
+  if (p.write && w.writeValueWithResponse) return w.writeValueWithResponse(frame);
+  if (w.writeValueWithoutResponse) { try { return await w.writeValueWithoutResponse(frame); } catch {} }
+  if (w.writeValueWithResponse) { try { return await w.writeValueWithResponse(frame); } catch {} }
+  return w.writeValue(frame);
+}
 function request(op, frame, timeout = 12000, pred = null) {
   return new Promise((res, rej) => {
     const to = setTimeout(() => { delete S.pending[op]; rej(new Error("Horloge antwoordde niet")); }, timeout);
@@ -210,15 +220,16 @@ function connBanner(msg, kind) {
   el.className = "connmsg " + (kind || "");
   el.textContent = msg;
 }
-async function connectWatch(all) {
+async function connectWatch(filtered) {
   clearTimeout(S.reconnectTimer);
   if (!navigator.bluetooth) { showNoBluetooth(); return; }
   try {
-    connBanner("Kies je horloge in de lijst…", "wait");
-    const opts = all
-      ? { acceptAllDevices: true, optionalServices: [UART_SERVICE, "device_information"] }
-      : { filters: [{ namePrefix: "H59" }, { services: [ADV_SERVICE] }],
-          optionalServices: [UART_SERVICE, "device_information"] };
+    connBanner("Kies je horloge in de lijst (H59_…)…", "wait");
+    // Standaard ALLE apparaten tonen: op iOS/Bluefy verschijnt de H59 dan
+    // gegarandeerd in de kieslijst (gefilterd op naam/service faalt soms stil).
+    const opts = filtered
+      ? { filters: [{ namePrefix: "H59" }, { services: [ADV_SERVICE] }], optionalServices: [UART_SERVICE, "device_information"] }
+      : { acceptAllDevices: true, optionalServices: [UART_SERVICE, "device_information"] };
     const dev = await navigator.bluetooth.requestDevice(opts);
     S.device = dev;
     dev.addEventListener("gattserverdisconnected", onDisconnected);
@@ -227,23 +238,20 @@ async function connectWatch(all) {
   } catch (e) {
     setChip();
     if (e && (e.name === "NotFoundError" || e.name === "AbortError")) {
-      // Niets/geen apparaat gekozen. Bied de 'alle apparaten'-optie aan.
-      connBanner("Geen horloge gekozen. Zie je 'H59' niet in de lijst? Zorg dat het scherm van je horloge aan staat en dat het niet met je telefoon-Bluetooth gekoppeld is (Instellingen → Bluetooth → ontkoppelen). Of tik hieronder op 'Alle apparaten tonen'.", "err");
-      showAllDevicesButton();
+      connBanner("Geen apparaat gekozen. Tik nog eens op 'Verbind' en kies H59_5A06. Zie je 'm niet? Ga naar iPhone → Instellingen → Bluetooth en 'vergeet' H59 daar (dan is hij vrij voor deze app).", "err");
     } else {
       connBanner("Bluetooth-fout: " + (e && e.message ? e.message : e), "err");
     }
   }
 }
-function showAllDevicesButton() {
-  const host = $("#view .screen") || $("#view");
-  if ($("#allbtn")) return;
-  const b = document.createElement("button");
-  b.id = "allbtn"; b.className = "btn ghost block"; b.style.marginTop = "10px";
-  b.textContent = "Alle Bluetooth-apparaten tonen";
-  b.onclick = () => connectWatch(true);
-  const first = $("#connmsg"); if (first && first.parentNode) first.parentNode.insertBefore(b, first.nextSibling);
-  else host.prepend(b);
+// Bij het openen: als je het horloge eerder koos, meteen weer verbinden.
+async function tryAutoReconnect() {
+  if (!navigator.bluetooth || !navigator.bluetooth.getDevices) return;
+  try {
+    const devs = await navigator.bluetooth.getDevices();
+    const w = devs.find((d) => (d.name || "").toUpperCase().includes("H59")) || devs[0];
+    if (w) { S.device = w; w.addEventListener("gattserverdisconnected", onDisconnected); localStorage.setItem("watchName", w.name || "horloge"); setChip(); gattConnect(); }
+  } catch {}
 }
 async function gattConnect() {
   const dev = S.device; if (!dev || S.connecting) return;
@@ -258,10 +266,12 @@ async function gattConnect() {
     S.wr = await svc.getCharacteristic(UART_WRITE);
     await nt.startNotifications();
     nt.addEventListener("characteristicvaluechanged", (e) => onFrame(e.target.value));
-    for (const f of [setTimeFrame(), buildFrame(OP.FUNC_SUPPORT), buildFrame(OP.BATTERY), buildFrame(OP.PHONE_OS, [2])]) { await write(f); await new Promise((r) => setTimeout(r, 250)); }
+    // Verbinding staat zodra we kunnen luisteren+schrijven. De handshake is
+    // best-effort: een hikje daarin mag de verbinding niet laten mislukken.
     S.connected = true; S.backoff = 3000; setChip();
     const cm = $("#connmsg"); if (cm) cm.remove(); const ab = $("#allbtn"); if (ab) ab.remove();
     toast(`Verbonden met ${dev.name || "horloge"}`);
+    for (const f of [setTimeFrame(), buildFrame(OP.FUNC_SUPPORT), buildFrame(OP.BATTERY), buildFrame(OP.PHONE_OS, [2])]) { try { await write(f); } catch {} await new Promise((r) => setTimeout(r, 250)); }
     startLiveHr();
     render();
     sync();  // meteen alles ophalen
@@ -602,4 +612,4 @@ document.addEventListener("click", (e) => {
 window.addEventListener("hashchange", render);
 try { $("#hdate").textContent = new Date().toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" }); } catch {}
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
-(async () => { await gate(); document.onkeydown = null; setChip(); render(); setInterval(() => { if (tab() === "today") render(); }, 30000); })();
+(async () => { await gate(); document.onkeydown = null; setChip(); render(); tryAutoReconnect(); setInterval(() => { if (tab() === "today") render(); }, 30000); })();

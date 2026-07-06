@@ -1,6 +1,8 @@
-/* Offline-cache voor Meetboek Mobiel: cache-first op de app-schil. */
-const CACHE = "meetboek-mobiel-v4";
+/* Meetboek Mobiel — service worker. Network-first zodat updates altijd
+   binnenkomen; valt terug op de cache als je offline bent (app blijft werken). */
+const CACHE = "meetboek-mobiel-v5";
 const ASSETS = ["index.html", "./", "mobile.js", "app.css", "icon.svg", "manifest-mobile.webmanifest"];
+
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
 });
@@ -10,5 +12,12 @@ self.addEventListener("activate", (e) => {
   ).then(() => self.clients.claim()));
 });
 self.addEventListener("fetch", (e) => {
-  e.respondWith(caches.match(e.request, { ignoreSearch: true }).then((hit) => hit || fetch(e.request)));
+  if (e.request.method !== "GET") return;
+  e.respondWith(
+    fetch(e.request).then((res) => {
+      const copy = res.clone();
+      caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
+      return res;
+    }).catch(() => caches.match(e.request, { ignoreSearch: true }))
+  );
 });
