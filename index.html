@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="Meetboek" />
+<meta name="theme-color" content="#eef0f6" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#07080c" media="(prefers-color-scheme: dark)" />
+<title>Meetboek</title>
+<link rel="manifest" href="manifest-mobile.webmanifest" />
+<link rel="icon" href="icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="icon.svg" />
+<link rel="stylesheet" href="app.css?v=m3" />
+</head>
+<body>
+<div id="aurora" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+
+<header class="top" id="top">
+  <div class="row">
+    <div><div class="date" id="hdate">&nbsp;</div><h1 id="title">Vandaag</h1></div>
+    <span class="chip" id="chip"><span class="dot"></span>niet verbonden</span>
+  </div>
+  <div id="syncbar"><span class="t">Bezig met het horloge…</span></div>
+</header>
+
+<main id="view"><div class="screen"><div class="skel"></div></div></main>
+
+<nav class="dock-wrap"><div class="dock" id="dock">
+  <a href="#today" data-tab="today"><span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.4M12 19.6V22M2 12h2.4M19.6 12H22M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M19.1 4.9l-1.7 1.7M6.6 17.4l-1.7 1.7"/></svg></span>Vandaag</a>
+  <a href="#measure" data-tab="measure"><span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 12h4l2 5 4-12 2 7h6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Meten</a>
+  <a href="#sleep" data-tab="sleep"><span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M21 12.8A8 8 0 1 1 11.2 3a6.5 6.5 0 0 0 9.8 9.8z"/></svg></span>Slaap</a>
+  <a href="#trends" data-tab="trends"><span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 19V5M4 19h16M8 15l3-4 3 2 4-6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Trends</a>
+</div></nav>
+
+<div id="toast"></div>
+<script src="mobile.js?v=m3"></script>
+</body>
+</html>

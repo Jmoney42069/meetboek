@@ -1,0 +1,19 @@
+{
+  "name": "Meetboek Mobiel",
+  "short_name": "Meetboek",
+  "description": "Pc-loos health-dashboard: je telefoon praat rechtstreeks met je smartwatch.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#eef0f6",
+  "theme_color": "#eef0f6",
+  "lang": "nl",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
